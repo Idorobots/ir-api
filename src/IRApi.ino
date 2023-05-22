@@ -23,16 +23,21 @@ const uint16_t irLed = 22;
 const uint16_t recvPin = 21;
 #endif
 
-#define MAX_BUF 64
+const uint16_t frequency = 38000;
+const uint16_t bufSize = 2048;
+const uint8_t timeout = 40;
 
 const char* kSsid = "...";
 const char* kPassword = "...";
 
-IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
+IRsend irsend(irLed);
+IRrecv irrecv(recvPin, bufSize, timeout);
 
 void handleIrSend() {
-  String code = "";
   String protocol = "NEC";
+  uint16_t freq = frequency;
+  String code = "";
+  uint8_t repeat = kNoRepeat;
 
   for (uint8_t i = 0; i < server.args(); i++) {
     String a = server.argName(i);
@@ -41,6 +46,10 @@ void handleIrSend() {
       code = server.arg(i);
     } else if (a == "protocol") {
       protocol = server.arg(i);
+    } else if (a == "frequency") {
+      freq = strtoul(server.arg(i).c_str(), NULL, 10);
+    } else if (a == "repeat") {
+      repeat = strtoul(server.arg(i).c_str(), NULL, 10);
     }
   }
 
@@ -50,30 +59,50 @@ void handleIrSend() {
   Serial.print(type);
   Serial.print("): ");
 
-  // Length is count of nibbles, each 4 bits.
-  if (code.length() >= MAX_BUF * 2) {
-    Serial.println("Buffer overflow!");
-    server.send(400, "text/plain", "Buffer overflow!");
-  } else if (code.length() > 16) {
-    uint8_t state[MAX_BUF];
-    for(uint8_t i = 0; i < code.length(); i += 2) {
-      state[i/2] = nibbleToValue(code[i]) * 16 + nibbleToValue(code[i+1]);
-    }
+  if (protocol == "UNKNOWN") {
+    // Length is count of nibbles, each 4 bits.
+    if (code.length() >= bufSize * 4) {
+      Serial.println("Buffer overflow!");
+      server.send(400, "text/plain", "Buffer overflow!");
+    } else {
+      uint16_t length = code.length() / 4;
+      uint16_t raw[bufSize];
 
-    bool ok = irsend.send(type, state, code.length() / 2);
+      for(uint16_t i = 0; i < length; i++) {
+        raw[i] = (nibbleToValue(code[i * 4 + 0]) << 12)
+               + (nibbleToValue(code[i * 4 + 1]) << 8)
+               + (nibbleToValue(code[i * 4 + 2]) << 4)
+               + (nibbleToValue(code[i * 4 + 3]) << 0);
+      }
 
-    Serial.print("[");
-    for (uint8_t i = 0; i < code.length() /2; i++) {
-      Serial.print(state[i], 16);
-      Serial.print(", ");
+      irsend.sendRaw(raw, length, freq);
+
+      Serial.println(code);
+      server.send(200, "application/json", irJson(protocol, code));
     }
-    Serial.println("]");
-    server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
   } else {
-    bool ok = irsend.send(type, strtoul(code.c_str(), NULL, 16), code.length() * 4);
+    if (code.length() >= bufSize * 2) {
+      Serial.println("Buffer overflow!");
+      server.send(400, "text/plain", "Buffer overflow!");
+    } else if (code.length() > 16) {
+      uint16_t length = code.length() / 2;
+      uint8_t state[bufSize];
 
-    Serial.println(code);
-    server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
+      for(uint16_t i = 0; i < length; i++) {
+        state[i] = (nibbleToValue(code[i * 2 + 0]) << 4)
+                 + (nibbleToValue(code[i * 2 + 1]) << 0);
+      }
+
+      bool ok = irsend.send(type, state, length);
+
+      Serial.println(code);
+      server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
+    } else {
+      bool ok = irsend.send(type, strtoul(code.c_str(), NULL, 16), code.length() * 4, repeat);
+
+      Serial.println(code);
+      server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
+    }
   }
 }
 
@@ -135,6 +164,7 @@ void handleNotFound() {
 
 void setup(void) {
   irrecv.enableIRIn();
+  irsend.enableIROut(frequency);
   irsend.begin();
 
   Serial.begin(115200);
