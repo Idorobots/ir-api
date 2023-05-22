@@ -31,14 +31,14 @@ const char* kPassword = "...";
 IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
 
 void handleIrSend() {
-  String arg = "";
+  String code = "";
   String protocol = "NEC";
 
   for (uint8_t i = 0; i < server.args(); i++) {
     String a = server.argName(i);
 
     if (a == "code") {
-      arg = server.arg(i);
+      code = server.arg(i);
     } else if (a == "protocol") {
       protocol = server.arg(i);
     }
@@ -51,31 +51,29 @@ void handleIrSend() {
   Serial.print("): ");
 
   // Length is count of nibbles, each 4 bits.
-  if (arg.length() >= MAX_BUF * 2) {
+  if (code.length() >= MAX_BUF * 2) {
     Serial.println("Buffer overflow!");
     server.send(400, "text/plain", "Buffer overflow!");
-  } else if (arg.length() > 16) {
+  } else if (code.length() > 16) {
     uint8_t state[MAX_BUF];
-    for(uint8_t i = 0; i < arg.length(); i += 2) {
-      state[i/2] = nibbleToValue(arg[i]) * 16 + nibbleToValue(arg[i+1]);
+    for(uint8_t i = 0; i < code.length(); i += 2) {
+      state[i/2] = nibbleToValue(code[i]) * 16 + nibbleToValue(code[i+1]);
     }
 
-    bool ok = irsend.send(type, state, arg.length() / 2);
+    bool ok = irsend.send(type, state, code.length() / 2);
 
     Serial.print("[");
-    for (uint8_t i = 0; i < arg.length() /2; i++) {
+    for (uint8_t i = 0; i < code.length() /2; i++) {
       Serial.print(state[i], 16);
       Serial.print(", ");
     }
     Serial.println("]");
-    server.send(ok ? 200 : 400, "text/plain", arg);
+    server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
   } else {
-    uint64_t code = strtoul(arg.c_str(), NULL, 16);
-
-    bool ok = irsend.send(type, code, arg.length() * 4);
+    bool ok = irsend.send(type, strtoul(code.c_str(), NULL, 16), code.length() * 4);
 
     Serial.println(code);
-    server.send(ok ? 200 : 400, "text/plain", arg);
+    server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
   }
 }
 
@@ -94,7 +92,7 @@ void handleIrScan() {
 
       Serial.print(resultToHumanReadableBasic(&result));
       Serial.println(resultToSourceCode(&result));
-      server.send(200, "text/plain", code);
+      server.send(200, "application/json", irJson(protocol, code));
     } else {
       Serial.println("Buffer overflow!");
       server.send(400, "text/plain", "buffer overflow");
@@ -103,6 +101,10 @@ void handleIrScan() {
   } else {
     server.send(404, "text/plain", "not found");
   }
+}
+
+String irJson(String protocol, String code) {
+  return String("{\"protocol\":\"") + protocol + "\",\"code\":\"" + code + "\"}";
 }
 
 uint8_t nibbleToValue(char c) {
