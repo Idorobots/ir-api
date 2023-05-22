@@ -10,7 +10,8 @@
 #include <ESP8266mDNS.h>
 
 ESP8266WebServer server(80);
-const uint16_t kIrLed = 0;  // ESP GPIO pin to use. Recommended: 4 (D2).
+const uint16_t irLed = 0;
+const uint16_t recvPin = 2;
 #endif
 
 #if defined(ESP32)
@@ -18,7 +19,8 @@ const uint16_t kIrLed = 0;  // ESP GPIO pin to use. Recommended: 4 (D2).
 #include <WebServer.h>
 
 WebServer server(80);
-const uint16_t kIrLed = 22;  // ESP GPIO pin to use. Recommended: 4 (D2).
+const uint16_t irLed = 22;
+const uint16_t recvPin = 21;
 #endif
 
 #define MAX_BUF 64
@@ -28,7 +30,7 @@ const char* kPassword = "...";
 
 IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
 
-void handleIr() {
+void handleIrSend() {
   String arg = "";
   String protocol = "NEC";
 
@@ -44,7 +46,7 @@ void handleIr() {
 
   decode_type_t type = strToDecodeType(protocol.c_str());
 
-  Serial.print(protocol + " (");
+  Serial.print("Sent " + protocol + " (");
   Serial.print(type);
   Serial.print("): ");
 
@@ -77,6 +79,32 @@ void handleIr() {
   }
 }
 
+void handleIrScan() {
+  decode_results result;
+
+  if (irrecv.decode(&result)) {
+    if (!result.overflow) {
+      String protocol = typeToString(result.decode_type);
+      String code = resultToHexidecimal(&result);
+
+      Serial.print("Got " + protocol + " (");
+      Serial.print(result.decode_type);
+      Serial.print("): ");
+      Serial.println(code);
+
+      Serial.print(resultToHumanReadableBasic(&result));
+      Serial.println(resultToSourceCode(&result));
+      server.send(200, "text/plain", code);
+    } else {
+      Serial.println("Buffer overflow!");
+      server.send(400, "text/plain", "buffer overflow");
+    }
+    irrecv.resume();
+  } else {
+    server.send(404, "text/plain", "not found");
+  }
+}
+
 uint8_t nibbleToValue(char c) {
   if (c >= '0' && c <= '9') {
     return c - '0';
@@ -104,10 +132,11 @@ void handleNotFound() {
 }
 
 void setup(void) {
+  irrecv.enableIRIn();
   irsend.begin();
 
   Serial.begin(115200);
-  WiFi.begin(kSsid, kPassword);
+  WiFi.begin(ssid, password);
   Serial.println("");
 
   // Wait for connection
@@ -117,11 +146,12 @@ void setup(void) {
   }
   Serial.println("");
   Serial.print("Connected to ");
-  Serial.println(kSsid);
+  Serial.println(ssid);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP().toString());
 
-  server.on("/send/ir", handleIr);
+  server.on("/ir/send", handleIrSend);
+  server.on("/ir/scan", handleIrScan);
 
   server.onNotFound(handleNotFound);
 
