@@ -10,7 +10,7 @@
 #include <ESP8266mDNS.h>
 
 ESP8266WebServer server(80);
-const uint16_t irLed = 0;
+const uint16_t irLed = 3;
 const uint16_t recvPin = 2;
 #endif
 
@@ -184,7 +184,11 @@ void setup(void) {
   irsend.enableIROut(frequency);
   irsend.begin();
 
+#if defined(ESP32)
   Serial.begin(115200);
+#else
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
+#endif
   WiFi.begin(ssid, password);
   Serial.println("");
 
