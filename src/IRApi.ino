@@ -34,6 +34,10 @@ IRsend irsend(irLed);
 IRrecv irrecv(recvPin, bufSize, timeout);
 
 void handleIrSend() {
+  Serial.println("Handling /ir/send.");
+  Serial.print("Free memory: ");
+  Serial.println(system_get_free_heap_size());
+
   String protocol = "NEC";
   uint16_t freq = frequency;
   String code = "";
@@ -66,7 +70,7 @@ void handleIrSend() {
       server.send(400, "text/plain", "Buffer overflow!");
     } else {
       uint16_t length = code.length() / 4;
-      uint16_t raw[bufSize];
+      uint16_t *raw = new uint16_t[length];
 
       for(uint16_t i = 0; i < length; i++) {
         raw[i] = (nibbleToValue(code[i * 4 + 0]) << 12)
@@ -77,6 +81,8 @@ void handleIrSend() {
 
       irsend.sendRaw(raw, length, freq);
 
+      delete [] raw;
+
       Serial.println(code);
       server.send(200, "application/json", irJson(protocol, code));
     }
@@ -86,7 +92,7 @@ void handleIrSend() {
       server.send(400, "text/plain", "Buffer overflow!");
     } else if (code.length() > 16) {
       uint16_t length = code.length() / 2;
-      uint8_t state[bufSize];
+      uint8_t *state = new uint8_t[length];
 
       for(uint16_t i = 0; i < length; i++) {
         state[i] = (nibbleToValue(code[i * 2 + 0]) << 4)
@@ -94,6 +100,8 @@ void handleIrSend() {
       }
 
       bool ok = irsend.send(type, state, length);
+
+      delete [] state;
 
       Serial.println(code);
       server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
@@ -107,6 +115,10 @@ void handleIrSend() {
 }
 
 void handleIrScan() {
+  Serial.println("Handling /ir/scan.");
+  Serial.print("Free memory: ");
+  Serial.println(system_get_free_heap_size());
+
   decode_results result;
 
   if (irrecv.decode(&result)) {
@@ -130,6 +142,7 @@ void handleIrScan() {
   } else {
     server.send(404, "text/plain", "not found");
   }
+
 }
 
 String irJson(String protocol, String code) {
@@ -149,6 +162,10 @@ uint8_t nibbleToValue(char c) {
 }
 
 void handleNotFound() {
+  Serial.println("Handling not_found.");
+  Serial.print("Free memory: ");
+  Serial.println(system_get_free_heap_size());
+
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += server.uri();
@@ -189,6 +206,9 @@ void setup(void) {
 
   server.begin();
   Serial.println("HTTP server started");
+
+  Serial.print("Free memory: ");
+  Serial.println(system_get_free_heap_size());
 }
 
 void loop(void) {
