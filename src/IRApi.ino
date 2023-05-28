@@ -51,9 +51,9 @@ void handleIrSend() {
     } else if (a == "protocol") {
       protocol = server.arg(i);
     } else if (a == "frequency") {
-      freq = strtoul(server.arg(i).c_str(), NULL, 10);
+      freq = strtoul(server.arg(i).c_str(), NULL, DEC);
     } else if (a == "repeat") {
-      repeat = strtoul(server.arg(i).c_str(), NULL, 10);
+      repeat = strtoul(server.arg(i).c_str(), NULL, DEC);
     }
   }
 
@@ -94,7 +94,7 @@ void handleIrSend() {
       uint16_t length = code.length() / 2;
       uint8_t *state = new uint8_t[length];
 
-      for(uint16_t i = 0; i < length; i++) {
+      for (uint16_t i = 0; i < length; i++) {
         state[i] = (nibbleToValue(code[i * 2 + 0]) << 4)
                  + (nibbleToValue(code[i * 2 + 1]) << 0);
       }
@@ -106,7 +106,7 @@ void handleIrSend() {
       Serial.println(code);
       server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
     } else {
-      bool ok = irsend.send(type, strtoul(code.c_str(), NULL, 16), code.length() * 4, repeat);
+      bool ok = irsend.send(type, strtoul(code.c_str(), NULL, HEX), code.length() * 4, repeat);
 
       Serial.println(code);
       server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
@@ -124,7 +124,34 @@ void handleIrScan() {
   if (irrecv.decode(&result)) {
     if (!result.overflow) {
       String protocol = typeToString(result.decode_type);
-      String code = resultToHexidecimal(&result);
+      String code = "";
+
+      if (protocol == "UNKNOWN") {
+        uint16_t length = getCorrectedRawLength(&result);
+        uint16_t *raw = resultToRawArray(&result);
+
+        // NOTE handleIrSend() expects 4 nibbles for each timing value.
+        for (uint16_t i = 0; i < length; ++i) {
+          String val = String(raw[i], HEX);
+          switch(val.length()) {
+            case 1:
+              code += "0";
+            case 2:
+              code += "0";
+            case 3:
+              code += "0";
+            case 4:
+            default:
+              break;
+          }
+          code += val;
+        }
+
+        delete [] raw;
+      } else {
+        code = resultToHexidecimal(&result);
+      }
+
 
       Serial.print("Got " + protocol + " (");
       Serial.print(result.decode_type);
