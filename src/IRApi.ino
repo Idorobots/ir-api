@@ -36,7 +36,7 @@ IRrecv irrecv(recvPin, bufSize, timeout);
 void handleIrSend() {
   Serial.println("Handling /ir/send.");
   Serial.print("Free memory: ");
-  Serial.println(system_get_free_heap_size());
+  Serial.println(freeMemory());
 
   String protocol = "NEC";
   uint16_t freq = frequency;
@@ -117,7 +117,7 @@ void handleIrSend() {
 void handleIrScan() {
   Serial.println("Handling /ir/scan.");
   Serial.print("Free memory: ");
-  Serial.println(system_get_free_heap_size());
+  Serial.println(freeMemory());
 
   decode_results result;
 
@@ -191,7 +191,7 @@ uint8_t nibbleToValue(char c) {
 void handleNotFound() {
   Serial.println("Handling not_found.");
   Serial.print("Free memory: ");
-  Serial.println(system_get_free_heap_size());
+  Serial.println(freeMemory());
 
   String message = "File Not Found\n\n";
   message += "URI: ";
@@ -204,6 +204,14 @@ void handleNotFound() {
   for (uint8_t i = 0; i < server.args(); i++)
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   server.send(404, "text/plain", message);
+}
+
+uint32_t freeMemory() {
+#if defined(ESP32)
+  return esp_get_free_heap_size();
+#else
+  return system_get_free_heap_size();
+#endif
 }
 
 void setup(void) {
@@ -239,7 +247,7 @@ void setup(void) {
   Serial.println("HTTP server started");
 
   Serial.print("Free memory: ");
-  Serial.println(system_get_free_heap_size());
+  Serial.println(freeMemory());
 }
 
 void loop(void) {
