@@ -42,6 +42,15 @@ void handleIrSend() {
   uint16_t freq = frequency;
   String code = "";
   uint8_t repeat = kNoRepeat;
+  uint16_t tick = 560;
+  uint8_t headMarkTicks = 16;
+  uint8_t headSpaceTicks = 8;
+  uint8_t zeroMarkTicks = 1;
+  uint8_t zeroSpaceTicks = 1;
+  uint8_t oneMarkTicks = 1;
+  uint8_t oneSpaceTicks = 3;
+  uint8_t footMarkTicks = 1;
+  uint8_t footSpaceTicks = 0;
 
   for (uint8_t i = 0; i < server.args(); i++) {
     String a = server.argName(i);
@@ -54,6 +63,24 @@ void handleIrSend() {
       freq = strtoul(server.arg(i).c_str(), NULL, DEC);
     } else if (a == "repeat") {
       repeat = strtoul(server.arg(i).c_str(), NULL, DEC);
+    } else if (a == "tick") {
+      tick = strtoul(server.arg(i).c_str(), NULL, DEC);
+    } else if (a == "hmt") {
+      headMarkTicks = strtoul(server.arg(i).c_str(), NULL, DEC);
+    } else if (a == "hst") {
+      headSpaceTicks = strtoul(server.arg(i).c_str(), NULL, DEC);
+    } else if (a == "zmt") {
+      zeroMarkTicks = strtoul(server.arg(i).c_str(), NULL, DEC);
+    } else if (a == "zst") {
+      zeroSpaceTicks = strtoul(server.arg(i).c_str(), NULL, DEC);
+    } else if (a == "omt") {
+      oneMarkTicks = strtoul(server.arg(i).c_str(), NULL, DEC);
+    } else if (a == "ost") {
+      oneSpaceTicks = strtoul(server.arg(i).c_str(), NULL, DEC);
+    } else if (a == "fmt") {
+      footMarkTicks = strtoul(server.arg(i).c_str(), NULL, DEC);
+    }else if (a == "fst") {
+      footSpaceTicks = strtoul(server.arg(i).c_str(), NULL, DEC);
     }
   }
 
@@ -63,54 +90,118 @@ void handleIrSend() {
   Serial.print(type);
   Serial.print("): ");
 
-  if (protocol == "UNKNOWN") {
-    // Length is count of nibbles, each 4 bits.
-    if (code.length() >= bufSize * 4) {
-      Serial.println("Buffer overflow!");
-      server.send(400, "text/plain", "Buffer overflow!");
-    } else {
-      uint16_t length = code.length() / 4;
-      uint16_t *raw = new uint16_t[length];
+  if (protocol == "RAW_TIMINGS") {
+    handleSendRawTimings(protocol, code, repeat, freq);
+  } else if (protocol == "RAW_TICKS") {
+    handleSendRawTicks(protocol, code, repeat, freq, tick);
+  } else if (protocol == "RAW_BITS") {
+    handleSendRawBits(protocol, code, repeat, freq, tick,
+                      headMarkTicks, headSpaceTicks,
+                      zeroMarkTicks, zeroSpaceTicks,
+                      oneMarkTicks, oneSpaceTicks,
+                      footMarkTicks, footSpaceTicks);
+  } else {
+    handleSendBoringProtocol(protocol, type, code, repeat, freq);
+  }
+}
 
-      for(uint16_t i = 0; i < length; i++) {
-        raw[i] = (nibbleToValue(code[i * 4 + 0]) << 12)
+void handleSendRawBits(String protocol, String code, uint8_t repeat, uint16_t freq, uint16_t tick,
+                       uint8_t headMarkTicks, uint8_t headSpaceTicks,
+                       uint8_t zeroMarkTicks, uint8_t zeroSpaceTicks,
+                       uint8_t oneMarkTicks, uint8_t oneSpaceTicks,
+                       uint8_t footMarkTicks, uint8_t footSpaceTicks) {
+  // FIXME Only really supports 1 nibble sizes for ticks.
+  String ticks = "";
+
+  if (headMarkTicks > 0 && headSpaceTicks > 0) {
+    ticks += String(headMarkTicks, HEX) + String(headSpaceTicks, HEX);
+  }
+
+  String one = String(oneMarkTicks, HEX) + String(oneSpaceTicks, HEX);
+  String zero = String(zeroMarkTicks, HEX) + String(zeroSpaceTicks, HEX);
+
+  for (uint16_t i = 0; i < code.length(); i++) {
+    uint8_t v = nibbleToValue(code[i]);
+    ticks += ((v & 0x8) != 0) ? one : zero;
+    ticks += ((v & 0x4) != 0) ? one : zero;
+    ticks += ((v & 0x2) != 0) ? one : zero;
+    ticks += ((v & 0x1) != 0) ? one : zero;
+  }
+
+  if (footMarkTicks > 0) {
+    ticks += String(footMarkTicks, HEX);
+  }
+  if (footSpaceTicks > 0) {
+    ticks += String(footSpaceTicks, HEX);
+  }
+
+  handleSendRawTicks(protocol, ticks, repeat, freq, tick);
+}
+
+void handleSendRawTicks(String protocol, String code, uint8_t repeat, uint16_t freq, uint16_t tick) {
+  String timings = "";
+
+  for (uint16_t i = 0; i < code.length(); i++) {
+    timings += valueToNibbles(nibbleToValue(code[i]) * tick);
+  }
+
+  handleSendRawTimings(protocol, timings, repeat, freq);
+}
+
+void handleSendRawTimings(String protocol, String code, uint8_t repeat, uint16_t freq) {
+  // Length is count of nibbles, each 4 bits.
+  if (code.length() >= bufSize * 4) {
+    Serial.println("Buffer overflow!");
+    server.send(400, "text/plain", "Buffer overflow!");
+  } else {
+    uint16_t length = code.length() / 4;
+    uint16_t *raw = new uint16_t[length];
+
+    for (uint16_t i = 0; i < length; i++) {
+      raw[i] = (nibbleToValue(code[i * 4 + 0]) << 12)
                + (nibbleToValue(code[i * 4 + 1]) << 8)
                + (nibbleToValue(code[i * 4 + 2]) << 4)
                + (nibbleToValue(code[i * 4 + 3]) << 0);
-      }
+    }
 
+    for (uint16_t i = 1; i < repeat; ++i) {
       irsend.sendRaw(raw, length, freq);
-
-      delete [] raw;
-
-      Serial.println(code);
-      server.send(200, "application/json", irJson(protocol, code));
     }
-  } else {
-    if (code.length() >= bufSize * 2) {
-      Serial.println("Buffer overflow!");
-      server.send(400, "text/plain", "Buffer overflow!");
-    } else if (code.length() > 16) {
-      uint16_t length = code.length() / 2;
-      uint8_t *state = new uint8_t[length];
 
-      for (uint16_t i = 0; i < length; i++) {
-        state[i] = (nibbleToValue(code[i * 2 + 0]) << 4)
+    delete [] raw;
+
+    Serial.println(code);
+    server.send(200, "application/json", irJson(protocol, code));
+  }
+}
+
+void handleSendBoringProtocol(String protocol, decode_type_t type, String code, uint8_t repeat, uint16_t freq) {
+  if (code.length() >= bufSize * 2) {
+    Serial.println("Buffer overflow!");
+    server.send(400, "text/plain", "Buffer overflow!");
+  } else if (code.length() > 16) {
+    uint16_t length = code.length() / 2;
+    uint8_t *state = new uint8_t[length];
+
+    for (uint16_t i = 0; i < length; i++) {
+      state[i] = (nibbleToValue(code[i * 2 + 0]) << 4)
                  + (nibbleToValue(code[i * 2 + 1]) << 0);
-      }
-
-      bool ok = irsend.send(type, state, length);
-
-      delete [] state;
-
-      Serial.println(code);
-      server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
-    } else {
-      bool ok = irsend.send(type, strtoul(code.c_str(), NULL, HEX), code.length() * 4, repeat);
-
-      Serial.println(code);
-      server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
     }
+
+    bool ok = true;
+    for (uint16_t i = 0; i < repeat; i++) {
+      ok = ok && irsend.send(type, state, length);
+    }
+
+    delete [] state;
+
+    Serial.println(code);
+    server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
+  } else {
+    bool ok = irsend.send(type, strtoul(code.c_str(), NULL, HEX), code.length() * 4, repeat);
+
+    Serial.println(code);
+    server.send(ok ? 200 : 400, "application/json", irJson(protocol, code));
   }
 }
 
@@ -132,26 +223,13 @@ void handleIrScan() {
 
         // NOTE handleIrSend() expects 4 nibbles for each timing value.
         for (uint16_t i = 0; i < length; ++i) {
-          String val = String(raw[i], HEX);
-          switch(val.length()) {
-            case 1:
-              code += "0";
-            case 2:
-              code += "0";
-            case 3:
-              code += "0";
-            case 4:
-            default:
-              break;
-          }
-          code += val;
+          code += valueToNibbles(raw[i]);
         }
 
         delete [] raw;
       } else {
         code = resultToHexidecimal(&result);
       }
-
 
       Serial.print("Got " + protocol + " (");
       Serial.print(result.decode_type);
@@ -186,6 +264,24 @@ uint8_t nibbleToValue(char c) {
   }
 
   return 0; // FIXME Handle unrecognized garbage.
+}
+
+String valueToNibbles(uint16_t v) {
+  String code = "";
+  String val = String(v, HEX);
+  switch(val.length()) {
+    case 1:
+      code += "0";
+    case 2:
+      code += "0";
+    case 3:
+      code += "0";
+    case 4:
+    default:
+      break;
+  }
+  code += val;
+  return code;
 }
 
 void handleNotFound() {
