@@ -80,7 +80,38 @@ if __name__ == "__main__":
 
         # Moodlight
         elif device == "moodlight":
-            ok
+            CMD = {
+                "on": "e0",
+                "off": "60",
+                "+": "a0",
+                "-": "20",
+                "fade": "d8",
+                "strobe": "e8",
+                "flash": "f0",
+                "smooth": "c8",
+                "r": "90",
+                "g": "10",
+                "b": "50",
+                "w": "d0",
+                "r1": "b0",
+                "r2": "a8",
+                "r3": "98",
+                "r4": "88",
+                "g1": "30",
+                "g2": "28",
+                "g3": "18",
+                "g4": "08",
+                "b1": "70",
+                "b2": "68",
+                "b3": "58",
+                "b4": "48"
+            }
+            for i in range(2, len(sys.argv)):
+                run("NEC",
+                    nec.nec_state("00", CMD[sys.argv[i]]),
+                    "&repeat=4"
+                )
+                time.sleep(0.2)
 
         else:
           usage()
