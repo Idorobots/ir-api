@@ -6,8 +6,6 @@ import nec
 import requests
 import time
 
-BASE_URL="192.168.1.222"
-
 def arg_or_default(arg, default):
     if len(sys.argv) > arg:
         return sys.argv[arg]
@@ -15,31 +13,33 @@ def arg_or_default(arg, default):
         return default
 
 def usage():
-    print("Usage: {} device [arguments]".format(sys.argv[0]))
+    print("Usage: {} host device [arguments]".format(sys.argv[0]))
     print("Supported devices: ac, ap, va, moodlight".format(sys.argv[0]))
 
-def run(protocol, code, extra = ""):
-    url = "http://{}/ir/send?protocol={}&code={}{}".format(BASE_URL, protocol, code, extra)
+def run(host, protocol, code, extra = ""):
+    url = "http://{}/ir/send?protocol={}&code={}{}".format(host, protocol, code, extra)
     print(url)
     resp = requests.get(url)
     print(resp.content)
     return resp
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 3:
         usage()
     else:
-        device = sys.argv[1]
+        host = sys.argv[1]
+        device = sys.argv[2]
 
         # AC
         if device == "ac":
-            run("MITSUBISHI_AC",
+            run(host,
+                "MITSUBISHI_AC",
                 mitsubishi.mitsubishi_ac_state(
-                    arg_or_default(2, "on"), # power
-                    arg_or_default(3, "cool"), # mode
-                    arg_or_default(4, "25"), # temp
-                    arg_or_default(5, "auto"), # fan
-                    arg_or_default(6, "auto"), # vane
+                    arg_or_default(3, "on"), # power
+                    arg_or_default(4, "cool"), # mode
+                    arg_or_default(5, "25"), # temp
+                    arg_or_default(6, "auto"), # fan
+                    arg_or_default(7, "auto"), # vane
                 ),
                 "&repeat=2"
             )
@@ -51,8 +51,9 @@ if __name__ == "__main__":
                 "off": "00",
                 "speed": "20",
             }
-            for i in range(2, len(sys.argv)):
-                run("NEC",
+            for i in range(3, len(sys.argv)):
+                run(host,
+                    "NEC",
                     nec.nec_state("00", CMD[sys.argv[i]]),
                     "&repeat=4"
                 )
@@ -71,8 +72,9 @@ if __name__ == "__main__":
                 "forward": "36",
                 "right": "8c"
             }
-            for i in range(2, len(sys.argv)):
-                run("RAW_BITS",
+            for i in range(3, len(sys.argv)):
+                run(host,
+                    "RAW_BITS",
                     CMD[sys.argv[i]],
                     "&repeat=5&hmt=8&fmt=0"
                 )
@@ -106,8 +108,9 @@ if __name__ == "__main__":
                 "b3": "58",
                 "b4": "48"
             }
-            for i in range(2, len(sys.argv)):
-                run("NEC",
+            for i in range(3, len(sys.argv)):
+                run(host,
+                    "NEC",
                     nec.nec_state("00", CMD[sys.argv[i]]),
                     "&repeat=4"
                 )
